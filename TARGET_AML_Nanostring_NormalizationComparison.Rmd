@@ -1,0 +1,1061 @@
+---
+title: "Nanostring Compare Normalization Methods"
+author: "Jenny Smith"
+date: "June 8, 2017"
+output: html_document
+---
+
+
+```{r setup}
+library(knitr)
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=50),tidy=TRUE, fig.align='center', fig.height = 4, fig.width = 6)
+knitr::opts_knit$set(root.dir = "~/Nanostring_Analysis/2017.06.08_NormalizationMethods/")
+```
+
+
+```{r message = FALSE, warning=FALSE}
+library(RColorBrewer)
+library(colorspace)
+library(stringr)
+library(ggplot2)
+library(GGally)
+library(gridExtra)
+library(grid)
+library(magrittr)
+getwd()
+```
+
+
+```{r}
+source("~/scripts/RNAseq_Analysis/DifferentialExpn_PathwayAnalysis/clusterAnalysis_Function.r")
+source("~/scripts/ConversionScripts/Merge_Cat_FixDupIDs_Function.r")
+source("~/scripts/RNAseq_Analysis/DifferentialExpn_PathwayAnalysis/Heatmaps_Function.r")
+source("~/scripts/RNAseq_Analysis/DifferentialExpn_PathwayAnalysis/rmDupGenes_Function.r")
+source("~/scripts/RNAseq_Analysis/DifferentialExpn_PathwayAnalysis/ggplot_Themes_Function.r")
+```
+
+#define Functions to be used
+
+```{r}
+reformatAdvAn <- function(df, sampleIDmap){
+  
+  matchIDs <- function(reg,idMap){
+  match <- idMap[grepl(reg, idMap$Reg.),]
+  USI <- unique(match$USI)
+  return(USI)
+  }
+  
+  fixDupIDs <- function(df){
+    cols <- colnames(df)
+    idx <- which(duplicated(colnames(df)))
+    for ( i in 1:length(idx)){
+      name <- paste(cols[idx[i]], ".1", sep="")
+      cols[idx[i]] <- name
+    colnames(df) <- cols
+    }
+    return(df)
+  }
+
+  
+  Reg <- gsub("^([0-9]{6}).+", "\\1", rownames(df)) 
+  IDs <- sapply(Reg, matchIDs, idMap=sampleIDmap)
+  
+  df.t <- as.data.frame(t(df))
+  df.t <- as.data.frame(sapply(df.t, function(x) as.numeric(as.character(x))))
+  rownames(df.t) <-  gsub(".mRNA", "", colnames(df))
+  colnames(df.t) <- IDs
+  df.t <- fixDupIDs(df.t)
+  
+  return(df.t) 
+}
+```
+
+
+#Read in the Clinical Data 
+```{r}
+anno <- read.csv("~/Nanostring_Analysis/2017.05.04_DataExploration/NanostringAnnotations_04May2017.csv", stringsAsFactors = FALSE)
+anno$DX_Induction <- ifelse(anno$DX_Induction == "Induction", "EOI", anno$DX_Induction )
+anno <- fixDupIDs(anno,IDs="USI",type = "rownames")
+head(anno)
+```
+
+```{r}
+dim(anno)
+```
+
+
+```{r}
+clinData <- read.csv("~/reference_mapping-files/TARGET_AML_current_asof_june30_2016_UPDATED_RhondaEdit_2017.06.08.csv", stringsAsFactors = FALSE, row.names = 1)
+clinData$Fusion.Cluster.Category <- ifelse(clinData$Fusion.Cluster.Category == "", "None", clinData$Fusion.Cluster.Category)
+dim(clinData)
+```
+
+#Read in the TPM Values
+
+```{r}
+TPM <- get(load("TARGET_AML_LowDepth_TPM_rmDups.RData"))
+TPM <- TPM$remDups
+head(TPM)
+```
+
+```{r}
+dim(TPM)
+```
+
+#Read in the Fractional Raw Counts
+
+```{r}
+RNAseq <- get(load("TARGET_AML_FractionalCounts_withEnsemblID_BCCA28Apr2016.RData"))
+RNAseq <- RNAseq[,-2] %>% rmDupGenes("geneSymbol")
+
+head(RNAseq$remDups[,1:5])
+```
+
+```{r}
+dim(RNAseq$remDups)
+```
+
+
+# Read in the Normalized Counts
+```{r}
+files <- dir(pattern = "counts|Counts.+.RData")
+# files <- files[2:5]
+```
+
+
+```{r}
+for (file in files){
+  load(file)
+}
+```
+
+#Advanced Analysis Normalized Counts
+```{r}
+head(geNorm.cts[,1:5])
+```
+
+```{r}
+dim(geNorm.cts)
+```
+
+#Advanced Analysis: HK and POS ERCC Normalized counts
+
+Added after the results of the heirachal clustering showed discordant results.
+
+```{r}
+head(opt.geNorm.cts[,1:5])
+```
+
+```{r}
+dim(opt.geNorm.cts)
+```
+
+#Advanced Analysis: HK and POS ERCC Normalized counts
+
+Added after the results of the heirachal clustering showed discordant results.
+
+```{r}
+head(selectHK.cts[,1:5])
+selHKsNorm.cts <- selectHK.cts
+```
+
+```{r}
+dim(selHKsNorm.cts)
+```
+
+#Nanostringr Normalized Counts
+```{r}
+head(hknorm.cts[,1:5])
+hkNorm.cts <- hknorm.cts  #change name for uniformity
+rm(hknorm.cts)
+```
+
+```{r}
+dim(hkNorm.cts) #included cd34+ flow sorted samples. so these will be removed
+```
+
+I will remove the flow sorted samples and renames the patients to USIs
+```{r}
+unique(anno$DX_Induction)
+
+cd34 <- anno[grepl("CD34|OtherCells", anno$DX_Induction), ]
+cd34_IDs <- cd34$USI
+```
+
+```{r}
+colnames(hkNorm.cts) <- anno$USI
+hkNorm.cts <- hkNorm.cts[, ! colnames(hkNorm.cts) %in% cd34_IDs]
+hkNorm.cts <- fixDupIDs(hkNorm.cts, type="colnames")
+
+dim(hkNorm.cts)
+```
+
+```{r}
+head(hkNorm.cts[,1:5])
+```
+
+
+#nSolver Normalized Counts
+```{r}
+nSolverNorm.cts <- counts$geomean
+head(nSolverNorm.cts[,1:5])
+```
+
+```{r}
+dim(nSolverNorm.cts)
+```
+
+
+#Heatmaps
+
+```{r}
+anno <- anno[grepl("BM|DX|EOI", anno$DX_Induction), ]
+grps <- GroupIDs(anno, "DX_Induction")
+summary(grps)
+```
+
+
+```{r}
+pheno <- phenoVectors_MultipleGroups(grps)
+
+pheno[c(1:2,85:86,185:186)]
+# save(pheno,file= "TARGET_AML_NanostringPanel_PhenoVector.RData")
+```
+
+```{r}
+colors <- rainbow(3, s=0.5,v=0.85, start=0.5, end=0.8)
+
+colorBar <- gsub("BM", colors[1], pheno) %>% gsub("DX", colors[2], .) %>% gsub("EOI", colors[3], .)
+
+colorCodes <- c(BM=colors[1], DX=colors[2],EOI=colors[3])
+```
+
+```{r message=FALSE}
+normCounts <- ls(pattern = "Norm.+cts")
+dends <- list()
+for (i in 1:5){
+  name <- normCounts[i]
+  mat <- get(normCounts[i])
+  dend <- dendrograms(mat, pheno, rownames(mat), method = "complete")
+  
+  dends[[name]] <- dend
+}
+
+summary(dends)
+```
+
+```{r}
+cts <- lapply(normCounts, get)
+names(cts) <- normCounts
+sapply(cts, dim)
+```
+
+```{r}
+# save(cts, file= "TARGET_AML_Nanostring_NormalizedCounts_comparison.RData")
+```
+
+
+#Basic Dendrograms
+```{r fig.width=11, fig.height=11}
+# pdf(file="TARGET_AML_NanostringPanel_Euclidieanward.D2_Dends.pdf")
+par(mfrow=c(5,1))
+plot(dends$geNorm.cts$c1, cex=0.5, main="geNorm")
+plot(dends$hkNorm.cts$c1, cex=0.5, main="hkNorm")
+plot(dends$nSolverNorm.cts$c1, cex=0.5, main="nSolverNorm")
+plot(dends$opt.geNorm.cts$c1, cex=0.5, main="Optimized geNorm")
+plot(dends$selHKsNorm.cts$c1, cex=0.5, main="Select HKs")
+# dev.off()
+```
+
+##Check on the nSolver AA methods 
+```{r fig.width=11, fig.height=5}
+load("nSolver.test.RData")
+d <- dendrograms(nSolver.cts, pheno, rownames(nSolver.cts), method = "complete")
+colorDends(d$c1, colorCodes, pheno, c(0.25,2))
+```
+
+#Produce Color Dendrograms
+```{r message=FALSE,fig.width=11, fig.height=5}
+for ( i in 1:5) {
+  normType <- names(dends)[i] %>% gsub(".cts", "", . )
+  title <- paste("Heirachal Clustering of TARGET AML:", normType, sep=" ")
+  # pdf(file=paste0(normType, "_EuclidieanComplete_colorDend.pdf"), height = 3, width = 7)
+  
+  par(mar=c(5, 4, 5, 2))
+  colorDends(dends[[i]]$c1, colorCodes, pheno,c(0.25,2))
+  title(main=title, xlab="Patient", ylab="Euclidean Distance", line=4.5, cex.lab=1.5, cex.main=2)
+  # dev.off()
+}
+```
+
+
+The results of the normalized Advanced analysis results have the BM cluster with the diagnostic samples...
+This does not make sense, as they should be more similar to the EOI (end of induction).
+
+This result was double checked wih color dends, regular dentrograms, checkign that the log2 transform was done approproapriately. But it all was, and this log2 expn data was input into a simle euclidean distance and ward.D2 linakge algorith. 
+
+This below was a check that log2 transform produced the expecte output. and yes it did. 
+```{r}
+# head(dends$geNorm.cts$expnData[, c(1,85)]) #log2 expn data. )
+```
+
+#Heatmaps for QC
+```{r message=FALSE, fig.width=10, fig.height=11}
+for ( i in 1:5){
+  normType <- names(dends)[i] %>% gsub(".cts", "", . )
+  # pdf(file=paste0(normType, "_EuclidieanComplete_Heatmap.pdf"), height = 10, width=10)
+  par(mar=c(5, 4, 10, 2), oma=c(0,0,2,0))
+  basicHeatmap(dends[[i]]$expnData, dends[[i]]$c2, dends[[i]]$c1, colorBar, main=normType)
+  # dev.off()
+}
+```
+
+
+You would expect the have normal BM cluster with the end of induction samples. 
+
+
+#Annotation Heatmaps
+
+```{r}
+cols <- c("Primary.Cytogenetic.Code", "FLT3.ITD.positive.", "Fusion.Cluster.Category")
+# cols <- c("PrimaryCytogeneticCode", "FLT3.ITDpositive.", "NPMmutation","WT1mutation","c.KitMutationExon8","c.KitMutationExon17", "monosomy7")
+annotationIDs <- list()
+for (i in 1:length(cols)){
+  groupID <- GroupIDs(clinData, cols[i])
+  annotationIDs[[cols[i]]] <- groupID
+}
+sapply(annotationIDs, summary) 
+annos <- lapply(annotationIDs, FUN = phenoVectors_MultipleGroups)
+```
+
+
+```{r}
+#annotation plot for the EOI samples and BM only
+EOI.BM <- nSolverNorm.cts[,grepl("\\.1|^BM", colnames(nSolverNorm.cts))] %>%
+  set_colnames(gsub("\\.1", "", colnames(.)))
+
+#Order the annotations to be the same as in the expression matrix.
+annos[["AML_BM"]] <- ifelse(grepl("^BM", colnames(EOI.BM)), "BM", "EOI") %>% set_names(colnames(EOI.BM))
+matchAnnos <- lapply(annos, matchMatrix, ExpnMatrix=EOI.BM)
+
+#create an annotation data frame. 
+annoDF <- do.call(cbind, matchAnnos)
+annoColors <- colorCodes_aheatmap(annoDF)
+
+#Create dendrograms 
+nSolver.d <- dendrograms(df=EOI.BM, pheno = matchAnnos$AML_BM, genelist = rownames(EOI.BM), method = "complete" )
+```
+
+```{r}
+# fileName <- "TARGET_AML_nanoStringPanel_annotationHeatmap.pdf"
+# pdf(file=fileName, height = 11, width = 10, onefile = FALSE)
+annotationHeatmap(nSolver.d$expnData, nSolver.d$c2, nSolver.d$c1, annoDF, annoColors)
+# dev.off()
+```
+
+
+#PCA Analysis (QC)
+
+```{r}
+mergedExpn <- list()
+PCA_list <- list()
+for (i in 1:5){
+  name <- normCounts[i]
+  mat <- get(normCounts[i])
+  
+  PCA <- plotPCA(mat,anno, factor = "DX_Induction", log2=FALSE)
+  PCA_list[[name]] <- PCA
+  
+  title <- paste(name, "PCA", sep=" ")
+  fileName <- paste(title, ".pdf", sep="")
+  
+  PCA$pca_plot$labels$title  <- title
+  PCA$pca_plot$labels$colour <- ""  
+  PCA$pca_plot <- PCA$pca_plot + scale_color_manual( values = colorCodes) + theme(text = element_text(size=20), axis.text = element_text(size=15))
+  
+  # pdf(file=fileName, height=5, width=5)
+  print(PCA$pca_plot)
+  # dev.off()
+}
+```
+
+
+#Linear Trend with the TPM Values Normalized Correlation of TPM to Nanostring Counts
+
+
+#Correlation Plot
+
+```{r}
+pheno.BM.DX <- pheno[grepl("BM|DX", pheno)]
+#log2 TPM
+TPM <- TPM[genes,names(pheno.BM.DX)]
+TPM.log <-  as.matrix(log2(TPM+1))
+rownames(TPM.log) <- genes
+  
+#log2 Nanostring 
+Nanostring <- nSolverNorm.cts[genes,names(pheno.BM.DX)]
+Nanostring.log <- as.matrix(log2(Nanostring+1))
+rownames(Nanostring.log) <- genes
+```
+
+
+```{r}
+allCor <- cor(t(Nanostring.log), t(TPM.log))
+```
+
+```{r fig.width=10, fig.height=10}
+# pdf(file="Nanostring_RNAseq_TPM_CorrelationMatrixPlot.pdf", height = 10, width = 10)
+corrplot(allCor, order = "hclust",hclust.method = "complete", method="shade", tl.cex = 0.3, tl.col = "black", cl.cex = 0.75, mar = c(0,0, 1, 0))
+# dev.off()
+```
+
+
+#Individual Genes Correlation Coeffecients
+
+```{r}
+Corr_Nanostring_TPM <- function(Nanostring, TPM, Genelist,phenoVector, log2=FALSE){
+  #datasets must have patient IDs as colnames and genes as rownames
+  library(ggplot2)
+  
+  #initialize df
+  corr_df <- data.frame(gene=character(),
+                                  Adj.R2=numeric(),
+                                  PearsonR=numeric())
+  
+  #create new directory for plots
+  newDir <- paste(as.character(substitute(Nanostring)), "correlationPlots", sep="_")
+  # print(newDir)
+  dir.create(file.path(getwd(),newDir))
+  
+  #only correlate the BM and DX samples
+  phenoVector <- phenoVector[grepl("BM|DX", phenoVector)]
+  
+  #log2 TPM
+  TPM <- TPM[Genelist,names(phenoVector)]
+  TPM.log <-  as.matrix(log2(TPM+1))
+  rownames(TPM.log) <- Genelist
+  
+  #log2 Nanostring 
+  Nanostring <- Nanostring[Genelist,names(phenoVector)]
+  Nanostring.log <- as.matrix(log2(Nanostring+1))
+  rownames(Nanostring.log) <- Genelist
+  
+  #IDs by group
+  BM <- grep("^BM", names(phenoVector), value=TRUE)
+  DX <- grep("^BM", names(phenoVector), value=TRUE, invert = TRUE)
+  
+  colors <- rainbow(3, s=0.5,v=0.85, start=0.5, end=0.8)
+
+
+  for (gene in Genelist){
+    TPM.expn <- TPM.log[gene, ]
+    Nanostring.expn <- Nanostring.log[gene, ]
+
+    lm <- lm(TPM.expn ~ Nanostring.expn ) 
+    r2 <- round(summary(lm)$adj.r.squared, digits=3)
+    r <- cor(TPM.expn, Nanostring.expn, method="pearson")
+
+    corr_df <- rbind(corr_df, data.frame(gene, r2, r))
+
+    title <- paste("Correlation of Gene Expression for", gene, sep=" ")
+    fileName <- paste(title,".pdf",sep="")
+    path <- paste(getwd(), newDir, fileName, sep="/")
+    # print(path)
+
+    # pdf(file=path, height =5, width=5)
+    # plot(Nanostring.expn[DX],TPM.expn[DX], main=title, ylab="Log2 TPM", xlab="Log2 Counts", pch=19,col=colors[2])
+    # points(Nanostring.expn[BM], TPM.expn[BM], pch=15, col=colors[1])
+    # abline(lm ,col="black")
+    # text(x=(max(Nanostring.expn)-1),y=1, labels=paste("R2 =",r2,sep=" "), col="black")
+    # dev.off()
+  }
+  # list <- list(TPM.log, Nanostring.log)
+  return(corr_df)
+}
+```
+
+```{r}
+genes <- rownames(geNorm.cts)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+geNorm.cor <- Corr_Nanostring_TPM(geNorm.cts, TPM, genes, pheno)
+hkNorm.cor <- Corr_Nanostring_TPM(hkNorm.cts, TPM, genes, pheno)
+nSolverNorm.cor <- Corr_Nanostring_TPM(nSolverNorm.cts, TPM, genes, pheno)
+opt.geNorm.cor <- Corr_Nanostring_TPM(opt.geNorm.cts, TPM, genes, pheno)
+selHKsNorm.cor <- Corr_Nanostring_TPM(selHKsNorm.cts, TPM, genes, pheno)
+```
+
+#Barplot of the percent of genes with Correlation in Nanostring to RNAseq > 0.7
+
+```{r}
+corrs <- lapply(ls(patter="\\.cor"), get)
+names(corrs) <- ls(pattern = "\\.cor")
+
+percentAbove1 <- NULL
+percentAbove2 <- NULL
+for (i in 1:5){
+  adj.r2 <- sum(corrs[[i]]$r2 >= 0.7)/nrow(corrs[[i]]) * 100
+  pearson <- sum(corrs[[i]]$r >= 0.7)/nrow(corrs[[i]]) * 100  
+  
+  percentAbove1 <- cbind(percentAbove1, adj.r2)
+  percentAbove2 <- cbind(percentAbove2, pearson)
+}
+
+colnames(percentAbove1) <- ls(pattern = "\\.cor")
+colnames(percentAbove2) <- ls(pattern = "\\.cor")
+```
+
+```{r message=FALSE, fig.width=10, fig.height=6}
+library(reshape2)
+percentAbove1 <- melt(as.data.frame(percentAbove1))
+percentAbove2 <- melt(as.data.frame(percentAbove2))
+
+p1 <- ggplot(percentAbove1, aes(x=variable, y=value, fill=variable)) + 
+  geom_bar(stat="identity") + labs(title="Adj. R2", y="% Genes above 0.7 R^2", x="") + theme(plot.margin = margin(2,2,2,0, unit = "cm"), legend.position = "none") + lims(y=c(0,100)) + 
+  theme_JS
+  
+p2 <- ggplot(percentAbove2, aes(x=variable, y=value, fill=variable)) +
+  geom_bar(stat="identity") + labs(title="Pearson Corr", y="% Genes above 0.7 R", x="") +  theme(plot.margin = margin(2,2,2,0, unit="cm"), legend.position = "none") + lims(y=c(0,100)) + 
+  theme_JS
+
+# pdf(file="PercentGenesAbove_CorrelationCoef_Barplots.pdf", height = 5, width = 8)
+grid.arrange(p1,p2, nrow=1,ncol=2, padding=10)
+# dev.off()
+```
+
+
+```{r}
+# save(corrs, file="TARGET_AML_NanostringPanel_CorrelationR2.RData")
+# nSolverNorm.cor[order(nSolverNorm.cor$r, decreasing=TRUE), ] 
+# nSolverNorm.cor[order(nSolverNorm.cor$r, decreasing=FALSE), ]
+# nSolverNorm.cor[which(nSolverNorm.cor$r >= 0.9), ] 
+```
+
+```{r}
+range(nSolverNorm.cor$r)
+median(nSolverNorm.cor$r)
+```
+
+#Correlation Boxplot for nSolver Normalized Counts 
+
+```{r}
+# pdf(file="~/Nanostring_Analysis/2017.06.08_NormalizationMethods/PearsonR_Nanostring_RNASeqTPM_FINAL.pdf", height = 7, width = 4)
+boxplot(nSolverNorm.cor$r, ylim=c(-0.2, 1.0), col="blue2", main="Pearson R \n between Nanostring and RNA Seq")
+# dev.off()
+```
+
+
+
+#Conclusion
+
+
+I will use the nSolver default normalization parameters for now due to 3 considerations
+1) the heirachal clusting immediately splits DX from EOI+BM and BM clusters closer to EOI (expected outcome)
+2) Percent of gene with R2 greater than or equal to 0.7 is on of the highest. the geNorm method is slightly hgiher
+3) The BY adjusted pvalues for the DE analysis was much more pronounced. 
+
+
+#Plot P-values from DE analysis
+```{r}
+geNorm.p <- read.csv("~/Nanostring_Analysis/2017.06.05_Nanotringr_geNorm/AMLvsBM 2017-06-07 17-45/results/DE/DE results - GroupDX.csv", row.names = 1, stringsAsFactors = FALSE)
+
+head(geNorm.p[,1:5])
+```
+
+```{r}
+nSolver.p <- read.csv("~/Nanostring_Analysis/2017.06.05_Nanotringr_geNorm/AA_nSolverNorm_geomeanNorm_withBackgroundSub 2017-06-08 17-51/results/DE/DE results - GroupDX.csv", row.names = 1, stringsAsFactors = FALSE)
+
+rownames(nSolver.p) <- gsub("\\-mRNA", "", rownames(nSolver.p) )
+```
+
+```{r}
+selHKs.p <- read.csv("~/Nanostring_Analysis/2017.06.05_Nanotringr_geNorm/AA_ManuallySelectHKs 2017-06-08 21-50/results/DE/DE results - GroupDX.csv", 
+                     row.names = 1, stringsAsFactors = FALSE)
+```
+
+```{r fig.width=10}
+# pdf(file="AA_PValue_DEGS_DX_vs_NBM_Histograms.pdf", height = 4, width = 10)
+par(mfrow=c(1,3))
+hist(nSolver.p$BY.p.value,main=" NSolver Histogram of HY Adjusted P-Values", xlab="p-Value", ylab="Frequency", breaks=seq(0,1,by=0.01), ylim=c(0,120), col="blue")
+abline(v=0.05, col="black", lty=2, lwd=2)
+hist(geNorm.p$BY.p.value, xlab="p-Value", ylab="Frequency", 
+     breaks=seq(0,1,by=0.01), ylim=c(0,120),col="red")
+abline(v=0.05, col="black", lty=2, lwd=2)
+hist(selHKs.p$BY.p.value, xlab="p-Value", ylab="Frequency", 
+     breaks=seq(0,1,by=0.01), ylim=c(0,120),col="purple")
+abline(v=0.05, col="black", lty=2, lwd=2)
+# dev.off()
+```
+
+```{r}
+range(nSolver.p$Log2.fold.change)
+range(-log10(nSolver.p$BY.p.value))
+```
+
+#Volcano Plots
+
+```{r fig.height=6, fig.width=6}
+#http://www.gettinggeneticsdone.com/2014/05/r-volcano-plots-to-visualize-rnaseq-microarray.html
+# Make a basic volcano plot
+
+# pdf(file="VolcanoPlot_DXvsBM.pdf", height = 8, width=7)
+par(mar=c(5,5,8,5))
+plot(nSolver.p$Log2.fold.change, -log10(nSolver.p$BY.p.value), pch=20, xlim=c(-5,6), ylab="", xlab="")
+title(main="Differentially Expressed Genes \n Diagnostic and Normal BM", xlab="Log2 Fold Change", ylab="-log10 P-Value", line=3)
+
+# Add colored points: red if padj<0.05, orange of log2FC>1, green if both)
+with(subset(nSolver.p, BY.p.value<.05 & abs(nSolver.p$Log2.fold.change) > 1), points(Log2.fold.change, -log10(BY.p.value), pch=20, col="red"))
+
+#Add text labels with gene names 
+sigNames <- subset(nSolver.p, BY.p.value<.00001 )
+sigNames$Neglog10P <- -log10(sigNames$BY.p.value)
+text(sigNames$Log2.fold.change-0.25, sigNames$Neglog10P, labels=rownames(sigNames), col="black", cex=0.5)
+abline(v=c(-1,1), col="black", lty=3)
+# dev.off()
+```
+
+```{r}
+nSolverNorm.EOI.p <- read.csv("~/Nanostring_Analysis/2017.06.05_Nanotringr_geNorm/AA_nSolverNorm_geomeanNorm_withBackgroundSub 2017-06-08 17-51/results/DE/DE results - GroupTrt.csv", stringsAsFactors = FALSE, row.names = 1)
+
+rownames(nSolverNorm.EOI.p) <- gsub("\\-mRNA", "", rownames(nSolverNorm.EOI.p))
+
+head(nSolverNorm.EOI.p)
+```
+
+
+```{r fig.height=6, fig.width=6}
+# pdf(file="VolcanoPlot_EOIvsBM.pdf", height = 8, width=7)
+par(mar=c(c(5,5,8,5)))
+plot(nSolverNorm.EOI.p$Log2.fold.change, -log10(nSolverNorm.EOI.p$BY.p.value), pch=20, xlim=c(-5,6), ylab="", xlab="")
+title(main="Differentially Expressed Genes \n Post Diagnostic and Normal BM", xlab="Log2 Fold Change", ylab="-log10 P-Value", line=3)
+
+# Add colored points: red if padj<0.05, orange of log2FC>1, green if both)
+with(subset(nSolverNorm.EOI.p, BY.p.value<.05 & abs(nSolverNorm.EOI.p$Log2.fold.change) > 1), points(Log2.fold.change, -log10(BY.p.value), pch=20, col="red"))
+
+sigNames <- subset(nSolverNorm.EOI.p, BY.p.value<.00001 )
+sigNames$Neglog10P <- -log10(sigNames$BY.p.value)
+
+text(sigNames$Log2.fold.change-0.25, sigNames$Neglog10P, labels=rownames(sigNames), col="black", cex=0.5)
+abline(v=c(-1,1), col="black", lty=3)
+# dev.off()
+```
+
+
+# Define Genes of Interest
+    Gene    R2    Pearson R
+109	PRAME	0.896	0.9471300792	
+86	HOXB8	0.890	0.9439199270	
+183	MYO18B	0.883	0.9403845058	
+39	TRH	0.880	0.9385654056	
+102	MSLN	0.873	0.9348412640	
+219	POU4F1	0.866	0.9310540699	
+
+
+#Filter Strategy
+1. Pearson R > 0.7 to RNAseq 
+2. Expression in BM max < 20 (close to negligable)
+3. FC > 2 for AML Dx vs BM (ideally this will select genes that are fairly commonly expressed in AML)
+4. Expression in AML > 50 for 5% of samples. 
+
+```{r}
+#Pearson Correlation above 
+highCor <- subset(nSolverNorm.cor, r > 0.7) 
+rownames(highCor) <- highCor$gene
+```
+
+1. Highly correlated
+```{r}
+subset1 <- nSolverNorm.cts[intersect(rownames(nSolverNorm.cts), rownames(highCor)), ] #160
+dim(subset1)
+```
+
+2. BM < 20 max
+```{r fig.width=10}
+BM_IDs <- names(grep("BM", pheno, value=TRUE))
+genes <- rownames(nSolverNorm.cts)
+
+maxBM <- apply(nSolverNorm.cts[,BM_IDs],1, max)
+
+log2BM <- log2(maxBM+1) %>% .[order(.)]
+
+# pdf(file="waterfallplot_NanostringPanel_BM_Expn.pdf", heigh=4, width=8)
+par(las=2, cex.axis=0.2)
+barplot(log2BM,
+        main="Log2 Expression of Genes in BM",
+        xlab="Genes",
+        ylab="Log2 Normalized Counts",
+        col=colorCodes[1],
+        axes=FALSE, lwd=0.5)
+abline(h=4, col="red", lty=2, lwd=2)
+par(cex=4, lwd=2)
+axis(2, at=seq(0,20,by=5))
+# dev.off()
+
+```
+
+```{r}
+less20BM <- names(which(maxBM < 20))
+
+subset2 <- subset1[intersect(rownames(subset1),less20BM), ]
+
+dim(subset2) #91
+```
+
+3. FC greater than 2 
+
+```{r}
+HighlySig <- rownames(subset(nSolver.p, BY.p.value<.05 & nSolver.p$Log2.fold.change > 1))
+
+subset3 <- subset2[intersect(rownames(subset2), HighlySig), ]
+dim(subset3) #63
+```
+
+
+4. Expression in DX > 50 in 5% of AML samples
+
+Note: This could be changed, since EOI possibly should be also considered for expression levels that are detectable. 
+```{r}
+library(genefilter)
+k <- round((0.05*84), 0) #5% of samples ~ 5 
+
+DX.f1 <- kOverA(4, 49) #50 or greater
+filterFunc <- filterfun(DX.f1) 
+
+dx <- subset3[, ! grepl("\\.1|^BM", colnames(subset3))]
+
+greater50AML <- genefilter(dx,filterFunc)
+sum(greater50AML)
+
+genes50 <- names(which(greater50AML))
+
+subset4 <- subset3[which(greater50AML), ]
+
+dim(subset4)
+```
+
+```{r}
+length(sapply(genes50, function(x) sum(dx[x,] > 49)) > 4) 
+```
+
+
+#Annotation Heatmap with the 63 genes
+```{r}
+filterGenes.d <- dendrograms(df = EOI.BM,pheno = matchAnnos$AML_BM, genelist = genes50, method = "complete")
+```
+
+```{r fig.width=10, fig.height=10}
+pdf(file="TARGET_AML_NanostringPanel_63_FilterGenes_AnnotationHeatmap.pdf", height = 10, width=10, onefile = FALSE)
+annotationHeatmap(filterGenes.d$expnData, filterGenes.d$c2, filterGenes.d$c1, annoDF, annoColors)
+dev.off()
+```
+
+
+
+
+
+5. Expression in EOI > 50 in 5% of AML samples
+
+```{r}
+EOI <- subset4[, grepl("\\.1", colnames(subset4))]
+
+EOI.f1 <- kOverA(4, 49) #50 or greater
+EOI.ff <- filterfun(EOI.f1) 
+
+greater50EOI <- genefilter(EOI,EOI.ff)
+sum(greater50EOI)
+
+highDX_EOI <- subset4[which(greater50EOI), ]
+```
+
+Probably Subset the results from TARGET_AML_Nanostring_ClinicalCorrelates.Rmd for these genes. 
+
+```{r}
+sum(sapply(names(greater50EOI), function(x) sum(EOI[x,] > 49)) >= 4)
+```
+
+```{r}
+# save(highDX_EOI, file="TARGET_AML_NanostringPanel_highDX_highEOI_geneNames.RData")
+```
+
+
+
+#Summary Statistics
+
+```{r fig.width=10}
+library(reshape2)
+log2Subset4 <- log2(subset4 + 1)[, order(pheno, decreasing = TRUE)]
+log2Subset4.t <- data.frame(t(log2Subset4), 
+                            Group=pheno)
+
+# save(log2Subset4, file="TARGET_AML_NanostringPanel_64FilteredGenes_nSolverNorm.RData")
+# save(log2Subset4.t, file="TARGET_AML_NanostringPanel_64FilteredGenes_nSolverNorm_withGroups.RData" )
+```
+
+```{r}
+means <- sapply(log2Subset4.t[,1:62], function(x) tapply(x, INDEX = list(log2Subset4.t$Group), mean))
+means <- melt(means)
+colnames(means) <- c("Group", "Gene", "Mean")
+means$Group <- factor(means$Group, c("EOI","DX","BM"))
+
+head(means)
+```
+
+```{r}
+ # position = position_dodge(0.9)
+# pdf(file="TARGET_AML_NanostringPanel_Barplot_Log2Mean_62genes.pdf")
+ggplot(means, aes(x=reorder(means$Gene,means$Mean), y=means$Mean, fill=Group)) + 
+  geom_bar(stat="identity")  +
+  theme(plot.title = element_text(hjust = 0.5, size = 18),
+          panel.background = element_rect(fill="white"),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_rect(color = "black", fill=NA),
+          axis.text.x = element_text(angle = 45,hjust = 1, vjust = 0.5, size = 4.5),
+          axis.text.y = element_text(size = 14),
+          axis.title = element_text(size = 15)) +
+  scale_fill_manual(values = colorCodes) +
+    labs(x="Gene", y="Mean Log2 Count", title="Mean Gene Expression for Nanostring Panel")
+# dev.off()
+```
+
+
+
+# Detect High Expressors in EOI Samples
+
+Possibilites
+1. outliers from distribution in EOI (higher than rest)
+2. greater than maximum BM per gene (used this method as of June 26, 2017)
+3. FC/ratio from DX samples. 
+4. Above or below the mean expression?
+5. quantiles or deciles? 
+
+```{r}
+#This function will select outliers based on greater than BM Expression
+detHighExpressors <- function(expnMatrix, phenoVector, geneList){
+  library(magrittr)
+  
+  #order and subset if necessary
+  expnMatrix <- expnMatrix[, intersect(names(phenoVector), colnames(expnMatrix))]
+  
+  if (ncol(expnMatrix)  < length(phenoVector)){
+    phenoVector <- intersect(colnames(expnMatrix), names(phenoVector))
+  }
+  
+  tmp <- data.frame(t(expnMatrix), 
+                            Group=phenoVector)
+  
+    aboveNorm <- function(tmp, gene){
+      # print(gene)
+      Norm <- tapply(tmp[,gene], INDEX = list(tmp$Group), max) 
+      Norm <- Norm[grepl("BM", names(Norm))] #Max Expression in Normal BM 
+
+      
+      #Select EOI samples greater than Normal BM and at a detectable level
+      outlierExpn <- tmp[which(tmp[,gene] > Norm & tmp[,gene] >= 20 & tmp$Group == "EOI"), ]
+      outlierIDs <- rownames(outlierExpn)  
+
+      #Select Paired Patient IDs not above outlier
+      SimilarToBM <- tmp[which(tmp$Group == "EOI"), ] 
+      SimilarToBM <- setdiff(rownames(SimilarToBM), outlierIDs)
+      
+      
+      list <- list(outlierIDs, SimilarToBM)
+      list <- lapply(list, function(x) gsub("\\.1", "", x)) #remove .1
+      names(list) <- c("AboveMaxBM", "similarToBM")
+
+      return(list)
+    }
+    
+    groups <- lapply(geneList, aboveNorm, tmp=tmp)
+    names(groups) <- geneList
+
+    phenoVectors_MultipleGroups <- function(listofgoupsIDs){
+          #listofgoupsIDs contains a list with each item containing the IDs for each factor level.
+          #See GroupIDs function - this produced the input called  "listofgroupIDs"
+          group <- names(listofgoupsIDs)
+
+          vector <- NULL
+          names <- NULL
+          for (i in 1:length(listofgoupsIDs)){
+            g <- group[i]
+            vector <- c(vector, rep(g, length(listofgoupsIDs[[i]])))
+            names <- c(names, listofgoupsIDs[[i]])
+          }
+
+          names(vector) <- names
+          return(vector)
+    }
+    
+    #Define vectors for each group
+    phenos <- lapply(groups, phenoVectors_MultipleGroups)
+    #Reorder the vectors by USI
+    # phenoVectors <- lapply(phenoVectors, function(x) x[order(names(x))]) 
+    phenos <- lapply(phenos, function(x) x[intersect(names(phenoVector), names(x))]) #changed 8/23/17
+    #bind the vectors into a dataframe
+    anno_df <- as.data.frame(do.call(cbind, phenos))
+
+    return(anno_df)
+    
+}
+```
+
+
+```{r}
+HighExpressors <- detHighExpressors(nSolverNorm.cts, pheno,rownames(subset4))
+head(HighExpressors[,1:5])
+```
+
+```{r}
+# write.csv(HighExpressors, "TARGET_AML_NanostringPanel_62genes_highExpressors_16June2017.csv")
+# save(HighExpressors, file="TARGET_AML_NanostringPanel_62genes_highExpressors_16June2017.RData")
+```
+
+```{r}
+HighExpr.Refined <- detHighExpressors(nSolverNorm.cts, pheno, rownames(highDX_EOI))
+
+head(HighExpr.Refined[,1:5])
+```
+
+```{r}
+# write.csv(HighExpr.Refined, "TARGET_AML_NanostringPanel_28genes_highExpressors_16June2017.csv")
+# save(HighExpr.Refined, file="TARGET_AML_NanostringPanel_28genes_highExpressors_16June2017.RData")
+```
+
+BIG IDEA:looking for patients who have CR but eventaully relapse - eg sensitivy higher than flow or micro. DOes it matter if you clear expression. 
+
+example PRAME, of 5 who expressed it at EOI, do they relapse? 
+
+Q: Expression of gene at EOI, has expression > 10 rpkm, do they relapse?  Those that do not express it, are they not relapsing? 
+
+
+#Save the Final nSolverNorm Counts 
+
+```{r}
+matched <- t(nSolverNorm.cts[match(nSolverNorm.cor$gene, rownames(nSolverNorm.cts)), ])
+
+nSolverNorm.cts_genesAsCols <- data.frame(matched,
+                                          r2 <- nSolverNorm.cor$r2,
+                                          PearsonR <- nSolverNorm.cor$r,
+                                          Group <- pheno[match(rownames(matched), names(pheno))])
+```
+
+```{r}
+nSolverNorm.merge <- merge(nSolverNorm.cor, nSolverNorm.cts, by.x="gene", by.y=0)
+rownames(nSolverNorm.merge) <- nSolverNorm.merge$gene
+```
+
+```{r}
+# write.csv(nSolverNorm.cts,"TARGET_AML_NanostringPanel_nSolverNorm_counts.csv" )
+# write.csv(nSolverNorm.merge, "TARGET_AML_NanostringPanel_nSolverNorm_countsAndCorr.csv")
+# write.csv(CTAs, "TARGET_AML_NanosotringPanel_CTAs_nSolverNorm_counts.csv")
+# write.csv(nSolver.p, "TARGET_AML_NanostringPanel_DEGs_DXvsBM_nSolverAA.csv")
+# write.csv(nSolverNorm.EOI.p, "TARGET_AML_NanostringPanel_DEGs_EOIvsBM_nSolverAA.csv")
+```
+
+
+
+#Paired Data 
+
+```{r message=FALSE}
+library(PairedData)
+
+dx <- log2(nSolver.cts["MSLN", !grepl("\\.1|^BM", colnames(nSolver.cts))] + 1)
+EOI <- log2(nSolver.cts["MSLN", grepl("\\.1", colnames(nSolver.cts))]+1)
+
+pd <- paired(dx,EOI)
+plot(pd, type="profile") + theme_bw()
+```
+
+
+
+
+#Compare DEGs FC and P values to RNAseq Data
+
+```{r}
+source("~/scripts/RNAseq_Analysis/DifferentialExpn_PathwayAnalysis/DifferentialExpressionPipeline.r")
+```
+
+nSolver.p is the nSolver norm DX coutns DEGs agains normal BM 
+
+```{r}
+Frac.cts <- RNAseq$remDups
+GOI <- intersect(rownames(nSolverNorm.cts),rownames(Frac.cts))
+# GOI
+```
+
+```{r message=FALSE, fig.height=10, fig.width=10}
+# pdf(file="TARGET_AML_NanostringPanel_RNAseq_DEGs_heatmap.pdf", height=10, width=10)
+RNAseq.DEGs <- twoGroups_DEGs(Frac.cts, clinData, col="X", ref="", 
+                              logCPM = TRUE, GOI=GOI,BM=TRUE,method="complete")
+# dev.off()
+```
+
+```{r}
+dim(RNAseq.DEGs$DE$dge) #17,932 genes with CPM > 1 in 5% of patients. 466 Patients with clinical data and RNAseq
+dim(RNAseq.DEGs$DE$DE) #233 genes returned out of 234 (did not meet CPM cut-off)
+```
+
+```{r}
+range(RNAseq.DEGs$DE$DE$logFC)
+range(RNAseq.DEGs$DE$DE$adj.P.Val)
+```
+
+```{r}
+range(nSolver.p$Log2.fold.change)
+range(nSolver.p$BY.p.value)
+```
+
+```{r}
+allgenes <- intersect(rownames(RNAseq.DEGs$DE$DE), rownames(nSolver.p))
+
+RNAseq.FC <- RNAseq.DEGs$DE$DE[allgenes,"logFC"] %>% set_names(allgenes)
+Nanostr.FC <- nSolver.p[allgenes,"Log2.fold.change"]  %>% set_names(allgenes)
+```
+
+```{r}
+pearsonCor <- cor(RNAseq.FC,Nanostr.FC )
+plot(RNAseq.FC, Nanostr.FC, col="blue", pch=19, main="Correlation of Fold-Change ")
+text(x=4.5,y=-2,labels = paste("R =", round(pearsonCor, digits = 3), sep=" "))
+abline(lm(Nanostr.FC ~ RNAseq.FC), col="red")
+```
+
+```{r}
+summary(lm(Nanostr.FC ~ RNAseq.FC))
+```
+
+```{r}
+#repeat with Selected genes
+RNAseq.FC2 <- RNAseq.DEGs$DE$DE[genes50,"logFC"] %>% set_names(genes50)
+Nanostr.FC2 <- nSolver.p[genes50,"Log2.fold.change"]  %>% set_names(genes50)
+```
+
+```{r}
+pearsonCor2 <- cor(RNAseq.FC2,Nanostr.FC2 )
+plot(RNAseq.FC2, Nanostr.FC2, col="royalblue", pch=19, main="Correlation of Fold-Change ")
+text(x=4.5,y=2,labels = paste("R =", round(pearsonCor2, digits = 3), sep=" "))
+abline(lm(Nanostr.FC2 ~ RNAseq.FC2), col="red")
+```
+
+
+```{r}
+dat <- merge(RNAseq.FC2, Nanostr.FC2, by=0) %>% set_colnames(c("Gene","RNAseq.FC", "Nanostring.FC"))
+
+# pdf(file="Nanostring_nSoverNorm_FC_vs_RNAseq_FC_scatterplot.pdf", height = 5, width = 5)
+ggplot(dat, aes(x=RNAseq.FC, y=Nanostring.FC)) +
+  geom_point() + 
+  lims(x=c(0,6),y=c(0,6)) +
+  theme_minimal() +
+  coord_fixed() +
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) + 
+  geom_smooth(method = "lm") + 
+  geom_text(x=5, y=0.5,label=paste("R =", round(pearsonCor2, digits = 3)))
+# dev.off()
+
+getwd()
+```
+
+
+
